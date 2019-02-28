@@ -6,6 +6,8 @@ using System.Data.OleDb;
 using Microsoft.AspNetCore.Http;
 using NPOI.SS.UserModel;
 using System;
+using System.IO;
+using NPOI.XSSF.UserModel;
 
 namespace BillyCasperGAssignment.Models
 {
@@ -65,6 +67,26 @@ namespace BillyCasperGAssignment.Models
             return list;
         }
 
+        public void deduplicate()
+        {
+            using (MySqlConnection conn = GetConnection())
+            {
+                conn.Open();
+                MySqlCommand cmd;
+                using(MySqlTransaction trans = conn.BeginTransaction())
+                {
+                    cmd = new MySqlCommand("DELETE t1 FROM Costumer t1 INNER JOIN Costumer t2 WHERE t1.modifiedon < t2.modifiedon " +
+                    	"AND t1.costumer_lastname = t2.costumer_lastname" +
+                    	"AND t1.costumer_firstname = t2.costumer_firstname" +
+                        "AND (t1.costumer_internetemail = t2.costumer_internetemail " +
+                        "OR t1.costumer_addressline1 = t2.costumer_addressline1 " +
+                        "OR t1.costumer_homephone = t2.costumer_homephone)", conn,trans) ;
+
+                    cmd.ExecuteNonQuery();
+                    trans.Commit();
+                }
+            }
+        }
 
 
 
@@ -76,12 +98,9 @@ namespace BillyCasperGAssignment.Models
             using (MySqlConnection conn = GetConnection())
             {
                 conn.Open();
-                //IRow row;
                 MySqlCommand cmd;
                 using (MySqlTransaction trans = conn.BeginTransaction())
                 {
-                    //row = sheet.GetRow(i);
-                  
 
                     cmd = new MySqlCommand("INSERT INTO Costumer" +
                     "(ID," +
@@ -107,6 +126,71 @@ namespace BillyCasperGAssignment.Models
             }
         }
 
+        public IWorkbook ExportData()
+        {
+            IWorkbook workbook;
+            workbook = new XSSFWorkbook();
+            ISheet excelSheet = workbook.CreateSheet("Demo");
+            List<Costumer> list = new List<Costumer>();
+            IRow row; int num = 1;
+            using (MySqlConnection conn = createConnect())
+            {
+                conn.Open();
+                MySqlCommand cmd = new MySqlCommand("SELECT * FROM Costumer order by modifiedon", conn);
+                using (MySqlDataReader reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        list.Add(new Costumer()
+                        {
+                            ID = reader.GetInt32("ID"),
+                            CreatedOn = reader.GetDateTime("CreatedOn"),
+                            ModifiedOn = reader.GetDateTime("ModifiedOn"),
+                            Costumer_LastName = reader.GetString("Costumer_LastName"),
+                            Costumer_FirstName = reader.GetString("Costumer_FirstName"),
+                            AddressLine1 = reader.GetString("Costumer_AddressLine1"),
+                            Costumer_City = reader.GetString("Costumer_City"),
+                            Costumer_State = reader.GetString("Costumer_State"),
+                            Costumer_zip = reader.GetString("Costumer_Zip"),
+                            Costumer_Homephone = reader.GetString("Costumer_HomePhone"),
+                            Costumer_InternetEmail = reader.GetString("Costumer_InternetEmail")
+                        });
+                    }
+                }
+
+                row = excelSheet.CreateRow(num);
+                row.CreateCell(0).SetCellValue("ID");
+                row.CreateCell(1).SetCellValue("CreatedOn");
+                row.CreateCell(2).SetCellValue("ModifiedOn");
+                row.CreateCell(3).SetCellValue("Costumer_LastName");
+                row.CreateCell(4).SetCellValue("Costumer_FirstName");
+                row.CreateCell(5).SetCellValue("AddressLine1");
+                row.CreateCell(6).SetCellValue("Costumer_City");
+                row.CreateCell(7).SetCellValue("Costumer_State");
+                row.CreateCell(8).SetCellValue("Costumer_zip");
+                row.CreateCell(9).SetCellValue("Costumer_Homephone");
+                row.CreateCell(10).SetCellValue("Costumer_InternetEmail");
+
+                foreach (var item in list)
+                {
+                    row = excelSheet.CreateRow(num);
+                    row.CreateCell(0).SetCellValue(item.ID);
+                    row.CreateCell(1).SetCellValue(item.CreatedOn);
+                    row.CreateCell(2).SetCellValue(item.ModifiedOn);
+                    row.CreateCell(3).SetCellValue(item.Costumer_LastName);
+                    row.CreateCell(4).SetCellValue(item.Costumer_FirstName);
+                    row.CreateCell(5).SetCellValue(item.AddressLine1);
+                    row.CreateCell(6).SetCellValue(item.Costumer_City);
+                    row.CreateCell(7).SetCellValue(item.Costumer_State);
+                    row.CreateCell(8).SetCellValue(item.Costumer_zip);
+                    row.CreateCell(9).SetCellValue(item.Costumer_Homephone);
+                    row.CreateCell(10).SetCellValue(item.Costumer_InternetEmail);
+                    num++;
+                }
+            }
+
+            return workbook;
+        }
 
         public void AddCostumers(ISheet sheet)
         {
@@ -175,10 +259,6 @@ namespace BillyCasperGAssignment.Models
                         "costumer_zip," +
                         "costumer_homephone," +
                         "costumer_internetemail) values" +
-
-                        //"('" + Id + "',STR_TO_DATE('" + createdon + "','%m/%d/%y %h:%i %p'),STR_TO_DATE('" + modifiedon + "','%m/%d/%y %h:%i %p'),'" + lastname + "','"
-                        //    + firstname + "','" + address + "','" + city + "','" + state + "','" + zip + "','"
-                        //    + phone + "','" + email + "');", conn, trans);
                         "(@ID,STR_TO_DATE(@createdon,'%m/%d/%y %h:%i %p'),STR_TO_DATE(@modifiedon,'%m/%d/%y %h:%i %p'),@costumer_lastname,@costumer_firstname,@costumer_addressline1,@costumer_city,@costumer_state,@costumer_zip,@costumer_homephone,@costumer_internetemail)", conn,trans);
                         cmd.Parameters.Clear();
 
@@ -194,9 +274,7 @@ namespace BillyCasperGAssignment.Models
                         cmd.Parameters.AddWithValue("costumer_homephone", phone);
                         cmd.Parameters.AddWithValue("costumer_internetemail", email);
 
-
                         cmd.ExecuteNonQuery();
-
                         cmd.Dispose(); 
 
                     }
